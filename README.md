@@ -152,11 +152,10 @@ pytest
 pytest --cov=experimentation_toolkit --cov-report=term-missing
 ```
 
-The deterministic [game onboarding script](examples/game_onboarding.py) and its
-[visual notebook](examples/game_onboarding.ipynb) demonstrate assignment counts, SRM, a primary
-completion metric, retention and session-duration metrics, Holm correction, uncertainty plots,
-and report serialization. Their generated observations are synthetic and are not real-world
-evidence.
+The deterministic [game onboarding notebook](examples/game_onboarding.ipynb) demonstrates
+assignment counts, SRM, a primary completion metric, retention and session-duration metrics, Holm
+correction, interactive Plotly uncertainty plots, and report serialization. It is self-contained,
+uses a fixed seed, and labels all generated observations as synthetic.
 
 ## Limitations
 

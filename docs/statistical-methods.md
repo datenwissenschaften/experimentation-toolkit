@@ -75,11 +75,15 @@ Each arm requires at least two observations. NaN and infinity raise by default. 
 `nonfinite_policy="omit"`, they are removed and a diagnostic records counts. If both sample
 variances are zero, Welch's reference distribution is undefined: the result reports the observed
 point interval but no t statistic, degrees of freedom, or p-value. One zero-variance arm remains
-computable and is flagged.
+computable and is flagged. Means and sample standard deviations are evaluated after scale
+normalization, and the combined standard error uses a stable Euclidean norm; this avoids
+unnecessary overflow and underflow for representable extreme magnitudes.
 
-A relative mean difference is returned only when the observed control mean is positive and the
-treatment mean is non-negative. This is a conservative runtime check, not proof of ratio-scale
-measurement; callers must still decide whether ratios are scientifically meaningful.
+A relative mean difference is returned only when the treatment mean is non-negative and the
+positive control mean exceeds `sqrt(machine epsilon)` times the largest absolute observation.
+This scale-aware guard suppresses ratios dominated by floating-point cancellation while retaining
+genuinely small ratio-scale measurements. It is a conservative runtime check, not proof of
+ratio-scale measurement; callers must still decide whether ratios are scientifically meaningful.
 
 Reference: B. L. Welch, “The generalization of ‘Student's’ problem when several different
 population variances are involved,” *Biometrika* 34 (1947), 28–35,
@@ -89,10 +93,10 @@ population variances are involved,” *Biometrika* 34 (1947), 28–35,
 
 The alternatives are `two-sided`, `greater`, and `less`, always applied to treatment minus control.
 Directional p-values are computed from the signed statistic; the implementation does not blindly
-halve a two-sided p-value. Confidence intervals use the same tail allocation as the test. This
-coherence means a level-alpha test rejects exactly when its null boundary lies outside the
-corresponding `1-alpha` interval, subject to the binary test/interval using different score-based
-constructions.
+halve a two-sided p-value. Confidence intervals use the same direction and tail allocation as the
+test. Welch intervals invert the corresponding Welch test. The pooled binary score test and
+Newcombe interval are distinct score-based constructions, so their rejection and exclusion
+boundaries need not agree exactly in finite samples.
 
 ## Sample ratio mismatch
 
@@ -104,9 +108,10 @@ X^2 = \sum_i (O_i-E_i)^2/E_i,
 \]
 
 compared with a chi-square distribution on `k-1` degrees of freedom through
-`scipy.stats.chisquare`. Every expected count must be at least five. `p < significance_level`
-produces `FAIL`; equality does not. SRM flags inconsistency with allocation but cannot diagnose its
-cause.
+`scipy.stats.chisquare`. The result exposes `k-1` degrees of freedom. If any expected count is below
+five, the test is still computed but carries a diagnostic that the chi-square reference
+approximation may be inaccurate. `p < significance_level` produces `FAIL`; equality does not. SRM
+flags inconsistency with allocation but cannot diagnose its cause.
 
 Reference: `scipy.stats.chisquare` in the
 [SciPy reference guide](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.chisquare.html).
@@ -126,13 +131,16 @@ z_{power}\sqrt{p_c(1-p_c)+p_t(1-p_t)/r}]^2}{\delta^2}
 
 where `alpha*` is `alpha/2` for two-sided and `alpha` for one-sided planning. Treatment size is
 `ceil(r n_c)`. The implementation evaluates achieved power after integer rounding and increments
-the control size until the requested approximate power is met.
+the control size until the requested approximate power is met, then checks smaller adjacent integer
+designs so the returned control size is locally minimal for the configured allocation rule.
 
 An absolute MDE is a probability-point difference. A relative MDE is multiplied by baseline. MDE
 is a positive magnitude, added for `two-sided`/`greater` and subtracted for `less`. Rates must stay
 strictly between zero and one. Achieved power models the null-standardized score statistic as a
 normal variable using its alternative mean and variance. These calculations do not account for
-attrition, clustering, repeated looks, or baseline-rate estimation uncertainty.
+attrition, clustering, repeated looks, or baseline-rate estimation uncertainty. An MDE that does
+not change the target rate at float64 precision, or a design requiring group sizes above the exact
+integer range of float64, is rejected rather than returned with spurious precision.
 
 ## Multiple testing
 

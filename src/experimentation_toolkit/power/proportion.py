@@ -14,6 +14,7 @@ from experimentation_toolkit.validation.inputs import (
 )
 
 _METHOD = "Normal approximation for a pooled-null two-sample proportion score test"
+_MAX_EXACT_SAMPLE_SIZE = 2**53
 
 
 def _normal_approximation_power(
@@ -24,15 +25,16 @@ def _normal_approximation_power(
     alpha: float,
     alternative: AlternativeHypothesis,
 ) -> float:
-    pooled_rate = (control_size * baseline_rate + treatment_size * treatment_rate) / (
-        control_size + treatment_size
+    control_weight = control_size / (control_size + treatment_size)
+    pooled_rate = control_weight * baseline_rate + (1.0 - control_weight) * treatment_rate
+    inverse_root_control = 1.0 / sqrt(control_size)
+    inverse_root_treatment = 1.0 / sqrt(treatment_size)
+    null_standard_error = sqrt(pooled_rate * (1.0 - pooled_rate)) * np.hypot(
+        inverse_root_control, inverse_root_treatment
     )
-    null_standard_error = sqrt(
-        pooled_rate * (1.0 - pooled_rate) * (1.0 / control_size + 1.0 / treatment_size)
-    )
-    alternative_standard_error = sqrt(
-        baseline_rate * (1.0 - baseline_rate) / control_size
-        + treatment_rate * (1.0 - treatment_rate) / treatment_size
+    alternative_standard_error = np.hypot(
+        sqrt(baseline_rate * (1.0 - baseline_rate)) * inverse_root_control,
+        sqrt(treatment_rate * (1.0 - treatment_rate)) * inverse_root_treatment,
     )
     if null_standard_error == 0.0 or alternative_standard_error == 0.0:
         raise ValueError("power approximation is undefined at degenerate boundary rates")
@@ -125,6 +127,8 @@ def proportion_sample_size(
     absolute_effect = effect if mde_type is MDEType.ABSOLUTE else baseline_rate * effect
     sign = -1.0 if alternative is AlternativeHypothesis.LESS else 1.0
     treatment_rate = baseline_rate + sign * absolute_effect
+    if treatment_rate == baseline_rate:
+        raise ValueError("the MDE is too small to resolve at float64 precision")
     if not 0.0 < treatment_rate < 1.0:
         raise ValueError("the MDE implies a treatment rate outside the open interval (0, 1)")
 
@@ -139,16 +143,75 @@ def proportion_sample_size(
         )
     )
     power_quantile = float(stats.norm.ppf(power))
-    initial_control_size = ceil(
-        (
-            alpha_quantile * sqrt(null_variance_factor)
-            + power_quantile * sqrt(alternative_variance_factor)
+    standardized_distance = (
+        alpha_quantile * sqrt(null_variance_factor)
+        + power_quantile * sqrt(alternative_variance_factor)
+    ) / absolute_effect
+    if not np.isfinite(standardized_distance) or abs(standardized_distance) > sqrt(
+        _MAX_EXACT_SAMPLE_SIZE
+    ):
+        raise ValueError(
+            "the requested design exceeds the sample-size range supported by float64 precision"
         )
-        ** 2
-        / absolute_effect**2
+    raw_control_size = standardized_distance**2
+    if not np.isfinite(raw_control_size) or raw_control_size > _MAX_EXACT_SAMPLE_SIZE:
+        raise ValueError(
+            "the requested design exceeds the sample-size range supported by float64 precision"
+        )
+
+    def treatment_size_for(control_size: int) -> int:
+        treatment_size = max(2, ceil(allocation_ratio * control_size))
+        if treatment_size > _MAX_EXACT_SAMPLE_SIZE:
+            raise ValueError(
+                "the requested design exceeds the sample-size range supported by float64 precision"
+            )
+        return treatment_size
+
+    upper_control_size = max(2, ceil(raw_control_size))
+    upper_treatment_size = treatment_size_for(upper_control_size)
+    upper_power = _normal_approximation_power(
+        baseline_rate,
+        treatment_rate,
+        upper_control_size,
+        upper_treatment_size,
+        alpha,
+        alternative,
     )
-    control_size = max(2, initial_control_size)
-    treatment_size = max(2, ceil(allocation_ratio * control_size))
+    while upper_power < power:
+        upper_control_size *= 2
+        if upper_control_size > _MAX_EXACT_SAMPLE_SIZE:
+            raise ValueError(
+                "the requested design exceeds the sample-size range supported by float64 precision"
+            )
+        upper_treatment_size = treatment_size_for(upper_control_size)
+        upper_power = _normal_approximation_power(
+            baseline_rate,
+            treatment_rate,
+            upper_control_size,
+            upper_treatment_size,
+            alpha,
+            alternative,
+        )
+
+    lower_control_size = 2
+    while lower_control_size < upper_control_size:
+        candidate_control_size = (lower_control_size + upper_control_size) // 2
+        candidate_treatment_size = treatment_size_for(candidate_control_size)
+        candidate_power = _normal_approximation_power(
+            baseline_rate,
+            treatment_rate,
+            candidate_control_size,
+            candidate_treatment_size,
+            alpha,
+            alternative,
+        )
+        if candidate_power >= power:
+            upper_control_size = candidate_control_size
+        else:
+            lower_control_size = candidate_control_size + 1
+
+    control_size = lower_control_size
+    treatment_size = treatment_size_for(control_size)
     achieved = _normal_approximation_power(
         baseline_rate,
         treatment_rate,
@@ -157,17 +220,6 @@ def proportion_sample_size(
         alpha,
         alternative,
     )
-    while achieved < power:
-        control_size += 1
-        treatment_size = max(2, ceil(allocation_ratio * control_size))
-        achieved = _normal_approximation_power(
-            baseline_rate,
-            treatment_rate,
-            control_size,
-            treatment_size,
-            alpha,
-            alternative,
-        )
 
     return ProportionSampleSizeResult(
         baseline_rate=baseline_rate,

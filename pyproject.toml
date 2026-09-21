@@ -3,7 +3,8 @@ name = "experimentation-toolkit"
 version = "0.1.0"
 description = "Typed, statistically explicit frequentist analysis for controlled A/B experiments"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "datenwissenschaften", email = "martin.franke@datenwissenschaften.com" },
 ]
@@ -16,7 +17,6 @@ dependencies = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Typing :: Typed",
@@ -29,6 +29,10 @@ dev = [
     "pytest-cov>=5.0,<7.0",
     "ruff>=0.6,<1.0",
     "scipy-stubs>=1.15,<2.0",
+]
+examples = [
+    "ipykernel>=6.29,<8.0",
+    "matplotlib>=3.9,<4.0",
 ]
 
 [project.urls]

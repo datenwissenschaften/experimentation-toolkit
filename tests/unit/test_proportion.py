@@ -28,6 +28,80 @@ def test_proportion_matches_reference_score_test() -> None:
     assert result.p_value == pytest.approx(expected_p)
 
 
+def test_newcombe_interval_uses_independent_scipy_wilson_limits() -> None:
+    control_successes, control_total = 7, 53
+    treatment_successes, treatment_total = 18, 71
+    result = analyze_proportion(
+        control_successes=control_successes,
+        control_total=control_total,
+        treatment_successes=treatment_successes,
+        treatment_total=treatment_total,
+    )
+    control_interval = stats.binomtest(control_successes, control_total).proportion_ci(
+        confidence_level=0.95, method="wilson"
+    )
+    treatment_interval = stats.binomtest(treatment_successes, treatment_total).proportion_ci(
+        confidence_level=0.95, method="wilson"
+    )
+    control_rate = control_successes / control_total
+    treatment_rate = treatment_successes / treatment_total
+    difference = treatment_rate - control_rate
+    expected_lower = difference - sqrt(
+        (treatment_rate - treatment_interval.low) ** 2 + (control_interval.high - control_rate) ** 2
+    )
+    expected_upper = difference + sqrt(
+        (treatment_interval.high - treatment_rate) ** 2 + (control_rate - control_interval.low) ** 2
+    )
+    assert result.confidence_interval.lower == pytest.approx(expected_lower)
+    assert result.confidence_interval.upper == pytest.approx(expected_upper)
+
+
+@pytest.mark.parametrize("alternative", ["greater", "less"])
+def test_one_sided_newcombe_interval_matches_scipy_wilson_limits(alternative: str) -> None:
+    control_successes, control_total = 3, 25
+    treatment_successes, treatment_total = 8, 31
+    result = analyze_proportion(
+        control_successes=control_successes,
+        control_total=control_total,
+        treatment_successes=treatment_successes,
+        treatment_total=treatment_total,
+        alternative=alternative,
+    )
+    control_rate = control_successes / control_total
+    treatment_rate = treatment_successes / treatment_total
+    difference = treatment_rate - control_rate
+    if alternative == "greater":
+        treatment_lower = (
+            stats.binomtest(treatment_successes, treatment_total, alternative="greater")
+            .proportion_ci(confidence_level=0.95, method="wilson")
+            .low
+        )
+        control_upper = (
+            stats.binomtest(control_successes, control_total, alternative="less")
+            .proportion_ci(confidence_level=0.95, method="wilson")
+            .high
+        )
+        expected = difference - sqrt(
+            (treatment_rate - treatment_lower) ** 2 + (control_upper - control_rate) ** 2
+        )
+        assert result.confidence_interval.lower == pytest.approx(expected)
+    else:
+        treatment_upper = (
+            stats.binomtest(treatment_successes, treatment_total, alternative="less")
+            .proportion_ci(confidence_level=0.95, method="wilson")
+            .high
+        )
+        control_lower = (
+            stats.binomtest(control_successes, control_total, alternative="greater")
+            .proportion_ci(confidence_level=0.95, method="wilson")
+            .low
+        )
+        expected = difference + sqrt(
+            (treatment_upper - treatment_rate) ** 2 + (control_rate - control_lower) ** 2
+        )
+        assert result.confidence_interval.upper == pytest.approx(expected)
+
+
 def test_percentage_points_and_relative_lift_are_distinct() -> None:
     result = analyze_proportion(
         control_successes=100,
@@ -105,6 +179,28 @@ def test_two_sided_swap_invariance() -> None:
     )
 
 
+def test_one_sided_direction_reversal() -> None:
+    greater = analyze_proportion(
+        control_successes=13,
+        control_total=80,
+        treatment_successes=29,
+        treatment_total=110,
+        alternative="greater",
+    )
+    reversed_less = analyze_proportion(
+        control_successes=29,
+        control_total=110,
+        treatment_successes=13,
+        treatment_total=80,
+        alternative="less",
+    )
+    assert reversed_less.test_statistic == pytest.approx(-greater.test_statistic)
+    assert reversed_less.p_value == pytest.approx(greater.p_value)
+    assert reversed_less.confidence_interval.upper == pytest.approx(
+        -greater.confidence_interval.lower  # type: ignore[operator]
+    )
+
+
 @pytest.mark.parametrize("successes", [0, 10])
 def test_all_failure_and_all_success_are_finite(successes: int) -> None:
     result = analyze_proportion(
@@ -130,12 +226,64 @@ def test_zero_control_rate_omits_relative_lift() -> None:
 
 
 @pytest.mark.parametrize(
+    ("control_successes", "treatment_successes"),
+    [(0, 10), (10, 0), (0, 5), (10, 5)],
+)
+def test_boundary_groups_produce_ordered_finite_two_sided_intervals(
+    control_successes: int, treatment_successes: int
+) -> None:
+    result = analyze_proportion(
+        control_successes=control_successes,
+        control_total=10,
+        treatment_successes=treatment_successes,
+        treatment_total=10,
+    )
+    assert 0.0 <= result.p_value <= 1.0  # type: ignore[operator]
+    assert result.confidence_interval.lower is not None
+    assert result.confidence_interval.upper is not None
+    assert result.confidence_interval.lower <= result.confidence_interval.upper
+
+
+def test_very_large_unequal_counts_remain_finite() -> None:
+    result = analyze_proportion(
+        control_successes=123_456_789,
+        control_total=1_000_000_000,
+        treatment_successes=130_000_000,
+        treatment_total=1_100_000_000,
+    )
+    assert result.test_statistic is not None
+    assert result.p_value is not None and 0.0 <= result.p_value <= 1.0
+    assert result.confidence_interval.lower is not None
+    assert result.confidence_interval.upper is not None
+
+
+def test_larger_proportion_sample_reduces_interval_width() -> None:
+    small = analyze_proportion(
+        control_successes=100,
+        control_total=1000,
+        treatment_successes=120,
+        treatment_total=1000,
+    )
+    large = analyze_proportion(
+        control_successes=1000,
+        control_total=10000,
+        treatment_successes=1200,
+        treatment_total=10000,
+    )
+    small_width = small.confidence_interval.upper - small.confidence_interval.lower  # type: ignore[operator]
+    large_width = large.confidence_interval.upper - large.confidence_interval.lower  # type: ignore[operator]
+    assert large_width < small_width
+
+
+@pytest.mark.parametrize(
     "kwargs",
     [
         {"control_successes": 2, "control_total": 1},
         {"control_successes": -1, "control_total": 10},
         {"control_successes": 1, "control_total": 0},
+        {"treatment_successes": 1, "treatment_total": -1},
         {"treatment_successes": 11, "treatment_total": 10},
+        {"confidence_level": 0.0},
         {"confidence_level": 1.0},
     ],
 )

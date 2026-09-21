@@ -6,7 +6,7 @@ import numpy as np
 from scipy import stats
 
 from experimentation_toolkit.models.enums import DiagnosticStatus
-from experimentation_toolkit.models.results import SRMResult
+from experimentation_toolkit.models.results import DiagnosticResult, SRMResult
 from experimentation_toolkit.validation.inputs import (
     validate_nonnegative_integer,
     validate_probability,
@@ -49,9 +49,19 @@ def check_sample_ratio_mismatch(
     if total <= 0:
         raise ValueError("the total observed assignment count must be greater than zero")
     expected = {name: total * proportion for name, proportion in proportions.items()}
-    if min(expected.values()) < 5.0:
-        raise ValueError(
-            "every expected assignment count must be at least 5 for the chi-square test"
+    diagnostics: tuple[DiagnosticResult, ...] = ()
+    minimum_expected_count = min(expected.values())
+    if minimum_expected_count < 5.0:
+        diagnostics = (
+            DiagnosticResult(
+                code="SMALL_EXPECTED_ASSIGNMENT_COUNT",
+                status=DiagnosticStatus.WARN,
+                message=(
+                    "At least one expected assignment count is below 5; the chi-square "
+                    "reference approximation may be inaccurate."
+                ),
+                details={"minimum_expected_count": float(minimum_expected_count)},
+            ),
         )
 
     result = stats.chisquare(
@@ -67,6 +77,7 @@ def check_sample_ratio_mismatch(
         chi_square_statistic=statistic,
         p_value=p_value,
         significance_level=significance_level,
+        degrees_of_freedom=len(observed) - 1,
         status=DiagnosticStatus.FAIL if failed else DiagnosticStatus.PASS,
         message=(
             "Assignment counts are inconsistent with the configured allocation at the "
@@ -74,4 +85,5 @@ def check_sample_ratio_mismatch(
             if failed
             else "No sample ratio mismatch was detected at the selected threshold."
         ),
+        diagnostics=diagnostics,
     )

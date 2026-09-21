@@ -119,8 +119,8 @@ defines the hypothesis family before looking at results.
 Statistical significance quantifies incompatibility with a null model under its assumptions.
 Practical significance requires domain context, costs, guardrails, and a pre-specified decision
 rule. Read the absolute effect and its confidence interval first. Relative effects are omitted
-when the control denominator is zero or when continuous means do not support a conservative
-non-negative ratio-scale interpretation.
+when the control denominator is zero or when continuous means do not support a conservative,
+non-negative and numerically resolved ratio-scale interpretation.
 
 ## Installation
 
@@ -136,6 +136,12 @@ For a source checkout:
 python -m pip install -e '.[dev]'
 ```
 
+To execute the visual notebook, install the separate example dependencies:
+
+```bash
+python -m pip install -e '.[dev,examples]'
+```
+
 ## Testing and development
 
 ```bash
@@ -146,9 +152,11 @@ pytest
 pytest --cov=experimentation_toolkit --cov-report=term-missing
 ```
 
-The deterministic [game onboarding example](examples/game_onboarding.py) demonstrates assignment
-counts, SRM, a primary completion metric, retention and session-duration metrics, Holm correction,
-and report serialization. Its generated observations are synthetic and are not real-world evidence.
+The deterministic [game onboarding script](examples/game_onboarding.py) and its
+[visual notebook](examples/game_onboarding.ipynb) demonstrate assignment counts, SRM, a primary
+completion metric, retention and session-duration metrics, Holm correction, uncertainty plots,
+and report serialization. Their generated observations are synthetic and are not real-world
+evidence.
 
 ## Limitations
 

@@ -29,7 +29,7 @@ def _wilson_bounds(successes: int, total: int, z_value: float) -> tuple[float, f
     center = (proportion + z_squared / (2.0 * total)) / denominator
     half_width = (
         z_value
-        * sqrt(proportion * (1.0 - proportion) / total + z_squared / (4.0 * total**2))
+        * sqrt(proportion * (1.0 - proportion) / total + z_squared / (4.0 * total) / total)
         / denominator
     )
     return max(0.0, center - half_width), min(1.0, center + half_width)

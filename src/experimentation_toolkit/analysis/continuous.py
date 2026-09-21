@@ -1,6 +1,6 @@
 """Welch analysis for independent continuous outcomes."""
 
-from math import sqrt
+from math import hypot, sqrt
 from typing import Literal
 
 import numpy as np
@@ -24,14 +24,33 @@ from experimentation_toolkit.validation.inputs import (
 )
 
 
+def _stable_mean_and_standard_deviation(
+    values: npt.NDArray[np.float64],
+) -> tuple[float, float]:
+    """Compute float64 moments after scaling to avoid avoidable overflow/underflow."""
+    scale = float(np.max(np.abs(values)))
+    if scale == 0.0:
+        return 0.0, 0.0
+    scaled = values / scale
+    scaled_mean = float(np.mean(scaled, dtype=np.float64))
+    centered = scaled - scaled_mean
+    scaled_sum_of_squares = float(np.dot(centered, centered))
+    mean = scaled_mean * scale
+    standard_deviation = scale * sqrt(scaled_sum_of_squares / (values.size - 1))
+    if not np.isfinite(mean) or not np.isfinite(standard_deviation):
+        raise ValueError("sample moments are non-finite; rescale extreme observations")
+    return mean, standard_deviation
+
+
 def _welch_degrees_of_freedom(
-    control_variance: float,
+    control_standard_error: float,
     control_size: int,
-    treatment_variance: float,
+    treatment_standard_error: float,
     treatment_size: int,
 ) -> float:
-    control_term = control_variance / control_size
-    treatment_term = treatment_variance / treatment_size
+    scale = max(control_standard_error, treatment_standard_error)
+    control_term = (control_standard_error / scale) ** 2
+    treatment_term = (treatment_standard_error / scale) ** 2
     return (control_term + treatment_term) ** 2 / (
         control_term**2 / (control_size - 1) + treatment_term**2 / (treatment_size - 1)
     )
@@ -77,7 +96,7 @@ def analyze_continuous(
     Inputs must be one-dimensional and contain at least two finite values per arm.
     Non-finite observations raise by default; callers may explicitly request omission.
     A relative effect is emitted only when both group means are non-negative and the
-    control mean is strictly positive, a conservative check for a ratio-scale metric.
+    control mean is numerically resolved relative to the observed data scale.
     """
     control_values, control_omitted = normalize_numeric_sample(
         control, "control", nonfinite_policy=nonfinite_policy
@@ -91,19 +110,11 @@ def analyze_continuous(
     alternative = normalize_alternative(alternative)
     control_size = int(control_values.size)
     treatment_size = int(treatment_values.size)
-    with np.errstate(over="ignore", invalid="ignore"):
-        control_mean = float(np.mean(control_values, dtype=np.float64))
-        treatment_mean = float(np.mean(treatment_values, dtype=np.float64))
-        control_variance = float(np.var(control_values, ddof=1, dtype=np.float64))
-        treatment_variance = float(np.var(treatment_values, ddof=1, dtype=np.float64))
-    if not all(
-        np.isfinite(value)
-        for value in (control_mean, treatment_mean, control_variance, treatment_variance)
-    ):
-        raise ValueError("sample moments are non-finite; rescale extreme observations")
-    control_sd = sqrt(control_variance)
-    treatment_sd = sqrt(treatment_variance)
+    control_mean, control_sd = _stable_mean_and_standard_deviation(control_values)
+    treatment_mean, treatment_sd = _stable_mean_and_standard_deviation(treatment_values)
     effect = treatment_mean - control_mean
+    if not np.isfinite(effect):
+        raise ValueError("the mean difference is non-finite; rescale extreme observations")
     diagnostics: list[DiagnosticResult] = []
 
     omitted = control_omitted + treatment_omitted
@@ -132,7 +143,9 @@ def analyze_continuous(
             )
         )
 
-    standard_error = sqrt(control_variance / control_size + treatment_variance / treatment_size)
+    control_standard_error = control_sd / sqrt(control_size)
+    treatment_standard_error = treatment_sd / sqrt(treatment_size)
+    standard_error = hypot(control_standard_error, treatment_standard_error)
     if standard_error == 0.0:
         diagnostics.append(
             DiagnosticResult(
@@ -154,7 +167,10 @@ def analyze_continuous(
         degrees_of_freedom = None
     else:
         degrees_of_freedom = _welch_degrees_of_freedom(
-            control_variance, control_size, treatment_variance, treatment_size
+            control_standard_error,
+            control_size,
+            treatment_standard_error,
+            treatment_size,
         )
         statistic = effect / standard_error
         if alternative is AlternativeHypothesis.GREATER:
@@ -170,7 +186,7 @@ def analyze_continuous(
             confidence_level,
             alternative,
         )
-        if control_variance == 0.0 or treatment_variance == 0.0:
+        if control_sd == 0.0 or treatment_sd == 0.0:
             diagnostics.append(
                 DiagnosticResult(
                     code="ONE_ZERO_VARIANCE_SAMPLE",
@@ -182,8 +198,16 @@ def analyze_continuous(
                 )
             )
 
+    observed_scale = max(
+        float(np.max(np.abs(control_values))),
+        float(np.max(np.abs(treatment_values))),
+        np.finfo(np.float64).tiny,
+    )
+    denominator_resolution = sqrt(np.finfo(np.float64).eps) * observed_scale
     relative_effect = (
-        effect / control_mean if control_mean > 0.0 and treatment_mean >= 0.0 else None
+        effect / control_mean
+        if control_mean > denominator_resolution and treatment_mean >= 0.0
+        else None
     )
     if relative_effect is None:
         diagnostics.append(
@@ -192,8 +216,9 @@ def analyze_continuous(
                 status=DiagnosticStatus.WARN,
                 message=(
                     "Relative mean difference is not reported because the observed means do "
-                    "not support a non-negative ratio-scale interpretation."
+                    "not support a non-negative, numerically resolved ratio-scale interpretation."
                 ),
+                details={"minimum_resolved_control_mean": float(denominator_resolution)},
             )
         )
     direction = {

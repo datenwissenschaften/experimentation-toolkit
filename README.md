@@ -154,8 +154,9 @@ pytest --cov=experimentation_toolkit --cov-report=term-missing
 
 The deterministic [game onboarding notebook](examples/game_onboarding.ipynb) demonstrates
 assignment counts, SRM, a primary completion metric, retention and session-duration metrics, Holm
-correction, interactive Plotly uncertainty plots, and report serialization. It is self-contained,
-uses a fixed seed, and labels all generated observations as synthetic.
+correction, Plotly-generated uncertainty plots rendered as GitHub-compatible PNGs, and report
+serialization. It is self-contained, uses a fixed seed, and labels all generated observations as
+synthetic.
 
 ## Limitations
 

@@ -1,0 +1,72 @@
+[project]
+name = "experimentation-toolkit"
+version = "0.1.0"
+description = "Typed, statistically explicit frequentist analysis for controlled A/B experiments"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "datenwissenschaften", email = "martin.franke@datenwissenschaften.com" },
+]
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "numpy>=2.0,<3.0",
+    "scipy>=1.13,<2.0",
+    "pydantic>=2.8,<3.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.11,<2.0",
+    "pytest>=8.3,<9.0",
+    "pytest-cov>=5.0,<7.0",
+    "ruff>=0.6,<1.0",
+    "scipy-stubs>=1.15,<2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/datenwissenschaften/experimentation-toolkit"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "experimentation_toolkit", from = "src" }]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "examples"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --strict-config -ra"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = ["experimentation_toolkit"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

@@ -24,8 +24,10 @@ jobs:
         run: ruff format --check .
       - name: Mypy
         run: mypy
-      - name: Tests
-        run: pytest
+      - name: Tests with coverage
+        run: |
+          python -m pip install pytest-cov
+          pytest --cov=src --cov-report=term-missing --cov-report=xml
 
   notebook:
     runs-on: ubuntu-latest

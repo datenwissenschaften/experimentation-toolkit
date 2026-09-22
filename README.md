@@ -1,5 +1,7 @@
 # experimentation-toolkit
 
+[![CI](https://github.com/datenwissenschaften/experimentation-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/datenwissenschaften/experimentation-toolkit/actions/workflows/ci.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg) [![Last commit](https://img.shields.io/github/last-commit/datenwissenschaften/experimentation-toolkit)](https://github.com/datenwissenschaften/experimentation-toolkit/commits/main) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 `experimentation-toolkit` is a typed Python library for classical frequentist analysis of
 independent, two-arm controlled experiments. It connects assignment diagnostics, metric-level
 inference, multiplicity correction, power planning, and a serializable report without making a

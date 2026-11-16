@@ -54,6 +54,7 @@ separate fields with an explicit relative-effect definition.
 - Sample-ratio-mismatch checks for two or more assignment groups
 - Proportion sample-size planning and achieved-power approximation
 - Bonferroni, Holm, and Benjamini-Hochberg p-value adjustment
+- One-sided group-sequential monitoring with Lan-DeMets alpha spending
 - Immutable Pydantic models and standards-compliant JSON reports
 
 ## Statistical methods
@@ -116,6 +117,33 @@ and Holm control the family-wise error rate. Benjamini-Hochberg controls the fal
 under independence or positive dependence and must not be interpreted as FWER control. The caller
 defines the hypothesis family before looking at results.
 
+## Sequential testing
+
+```python
+from experimentation_toolkit import analyze_sequential_continuous
+
+monitoring = analyze_sequential_continuous(
+    control=control_hours,  # 72 observations before the change
+    treatment=treatment_hours,  # ordered observations after it, one per hour so far
+    control_looks=[72] * (len(treatment_hours) - 1),
+    treatment_looks=list(range(2, len(treatment_hours) + 1)),
+    maximum_control_size=72,
+    maximum_treatment_size=72,
+    alpha=0.05,
+    alternative="less",  # monitor for harm
+    spending="obrien-fleming",
+)
+monitoring.crossed, monitoring.crossed_at_look
+```
+
+`group_sequential_boundaries` returns exact one-sided z boundaries for any strictly increasing
+information fractions, and `alpha_spent` evaluates the O'Brien-Fleming-type or Pocock-type
+Lan-DeMets spending functions. Every look may be analyzed without inflating the one-sided error
+rate beyond `alpha`, provided the maximum sizes and spending function are fixed before monitoring
+starts. `analyze_sequential_continuous` maps each look's Welch statistic to z by tail probability,
+stops at the first crossing, and reports the looks it analyzed. Monitoring is one-sided; a
+crossing is evidence of an effect in the monitored direction, not an estimate of its size.
+
 ## Interpretation
 
 Statistical significance quantifies incompatibility with a null model under its assumptions.
@@ -162,10 +190,11 @@ synthetic.
 
 ## Limitations
 
-Version 0.1 supports independent, two-arm, fixed-horizon analyses only. It does not implement
-paired or clustered designs, exact unconditional proportion tests, covariate adjustment, CUPED,
-sequential monitoring, alpha spending, Bayesian analysis, causal identification, heterogeneous
-effects, feature flags, or platform infrastructure. The proportion test and power methods use
+Version 0.2 supports independent, two-arm analyses, fixed-horizon or monitored one-sided with
+alpha spending. It does not implement paired or clustered designs, exact unconditional proportion
+tests, covariate adjustment, CUPED, two-sided or futility boundaries, bias-adjusted estimates after
+early stopping, Bayesian analysis, causal identification, heterogeneous effects, feature flags, or
+platform infrastructure. The proportion test and power methods use
 large-sample approximations; warnings do not convert them into exact procedures.
 
 ## Roadmap

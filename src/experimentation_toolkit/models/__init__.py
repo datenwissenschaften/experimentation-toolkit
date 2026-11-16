@@ -7,6 +7,7 @@ from experimentation_toolkit.models.enums import (
     DiagnosticStatus,
     MDEType,
     MetricType,
+    SpendingFunction,
 )
 from experimentation_toolkit.models.results import (
     AchievedPowerResult,
@@ -16,6 +17,7 @@ from experimentation_toolkit.models.results import (
     ExperimentReport,
     MultipleTestingResult,
     ProportionSampleSizeResult,
+    SequentialTestResult,
     SRMResult,
 )
 
@@ -35,6 +37,8 @@ __all__ = [
     "MultipleTestingResult",
     "ProportionSampleSizeResult",
     "SRMResult",
+    "SequentialTestResult",
+    "SpendingFunction",
     "ToolkitModel",
     "Variant",
 ]

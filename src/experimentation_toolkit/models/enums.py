@@ -39,3 +39,10 @@ class MDEType(StrEnum):
 
     ABSOLUTE = "absolute"
     RELATIVE = "relative"
+
+
+class SpendingFunction(StrEnum):
+    """Lan-DeMets alpha-spending functions for group-sequential monitoring."""
+
+    O_BRIEN_FLEMING = "obrien-fleming"
+    POCOCK = "pocock"

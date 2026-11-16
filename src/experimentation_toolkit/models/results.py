@@ -1,5 +1,6 @@
 """Serializable analysis, diagnostic, power, and report models."""
 
+from itertools import pairwise
 from math import isclose
 from typing import Any
 
@@ -12,6 +13,7 @@ from experimentation_toolkit.models.enums import (
     DiagnosticStatus,
     MDEType,
     MetricType,
+    SpendingFunction,
 )
 
 
@@ -209,3 +211,57 @@ class ExperimentReport(ToolkitModel):
     diagnostics: tuple[SRMResult | DiagnosticResult, ...] = ()
     multiple_testing: MultipleTestingResult | None = None
     metadata: dict[str, int | float | str | bool | None] = Field(default_factory=dict)
+
+
+class SequentialTestResult(ToolkitModel):
+    """One-sided group-sequential monitoring result, truncated at the first crossing."""
+
+    metric_name: str | None = None
+    alternative: AlternativeHypothesis
+    spending: SpendingFunction
+    alpha: float = Field(gt=0.0, lt=0.5)
+    information_fractions: tuple[float, ...]
+    z_statistics: tuple[float, ...]
+    boundaries: tuple[float, ...]
+    cumulative_alpha_spent: tuple[float, ...]
+    crossed: bool
+    crossed_at_look: int | None = Field(default=None, ge=0)
+    method: str
+
+    @model_validator(mode="after")
+    def validate_monitoring_coherence(self) -> "SequentialTestResult":
+        size = len(self.information_fractions)
+        if size == 0:
+            raise ValueError("a sequential result must contain at least one look")
+        if (
+            len(self.z_statistics) != size
+            or len(self.boundaries) != size
+            or len(self.cumulative_alpha_spent) != size
+        ):
+            raise ValueError("sequential result arrays must have equal lengths")
+        if self.alternative is AlternativeHypothesis.TWO_SIDED:
+            raise ValueError("sequential monitoring is one-sided: use greater or less")
+        fractions = self.information_fractions
+        if fractions[0] <= 0.0 or fractions[-1] > 1.0:
+            raise ValueError("information fractions must be in (0, 1]")
+        if any(later <= earlier for earlier, later in pairwise(fractions)):
+            raise ValueError("information fractions must increase strictly")
+        spent = self.cumulative_alpha_spent
+        if any(later < earlier for earlier, later in pairwise(spent)):
+            raise ValueError("cumulative alpha spent must not decrease")
+        if spent[0] < 0.0 or spent[-1] > self.alpha * (1.0 + 1e-9):
+            raise ValueError("cumulative alpha spent must lie between zero and alpha")
+        sign = 1.0 if self.alternative is AlternativeHypothesis.GREATER else -1.0
+        crossings = [
+            index
+            for index, (statistic, boundary) in enumerate(
+                zip(self.z_statistics, self.boundaries, strict=True)
+            )
+            if sign * statistic >= sign * boundary
+        ]
+        expected = [size - 1] if self.crossed else []
+        if crossings != expected:
+            raise ValueError("only the final reported look may cross, and only when crossed")
+        if self.crossed_at_look != (size - 1 if self.crossed else None):
+            raise ValueError("crossed_at_look must index the final look exactly when crossed")
+        return self

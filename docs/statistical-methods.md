@@ -1,6 +1,6 @@
 # Statistical methods
 
-This document specifies the conventions used by `experimentation-toolkit` 0.1. Effects are always
+This document specifies the conventions used by `experimentation-toolkit` 0.2. Effects are always
 defined as treatment minus control. Let `alpha = 1 - confidence_level`.
 
 ## Binary outcomes
@@ -158,6 +158,66 @@ References:
 - Yoav Benjamini and Yosef Hochberg, “Controlling the False Discovery Rate: A Practical and
   Powerful Approach to Multiple Testing,” *Journal of the Royal Statistical Society, Series B* 57
   (1995), 289–300, [doi:10.1111/j.2517-6161.1995.tb02031.x](https://doi.org/10.1111/j.2517-6161.1995.tb02031.x).
+
+## Group-sequential monitoring
+
+Monitoring uses one-sided Lan-DeMets alpha spending. With information fractions
+`0 < t_1 < ... < t_K <= 1`, the z statistics follow the canonical joint distribution
+
+\[
+\operatorname{Corr}(Z_i, Z_j) = \sqrt{t_i / t_j}, \quad i \le j,
+\]
+
+equivalently a score process `S_k = Z_k sqrt(t_k)` with independent increments
+`N(0, t_k - t_{k-1})` under the null. The O'Brien-Fleming-type spending function is
+
+\[
+\alpha(t) = 2 - 2\Phi\left(z_{1-\alpha/2}/\sqrt{t}\right)
+\]
+
+and the Pocock-type function is `alpha ln(1 + (e - 1) t)`; both spend exactly `alpha` at `t = 1`.
+The boundary `c_k` solves
+
+\[
+P(Z_1 < c_1, \ldots, Z_{k-1} < c_{k-1}, Z_k \ge c_k) = \alpha(t_k) - \alpha(t_{k-1}).
+\]
+
+The probability is evaluated by recursive numerical integration of the score process
+(Armitage, McPherson and Rowe; Jennison and Turnbull, chapter 19). The continuation distribution
+is held as probability masses on a uniform score grid whose step is at most a quarter of the
+smallest increment's standard deviation, within `[0.005, 0.02]`. Each step convolves it with the
+exact cell probabilities of the Gaussian increment and truncates it at the boundary. Exit
+probabilities use the exact normal tail and are solved in log space, so boundaries stay finite
+when early O'Brien-Fleming increments are as small as `1e-30`. Masses below `1e-250` are dropped.
+A single look reproduces the fixed-horizon critical value; for five equally spaced looks at
+one-sided `alpha = 0.025` the boundaries are 4.877, 3.357, 2.680, 2.290 and 2.031
+(O'Brien-Fleming) and 2.438, 2.427, 2.410, 2.397 and 2.386 (Pocock). Tests check the error rate
+by simulation.
+
+`analyze_sequential_continuous` analyzes the first `n_c,k` control and `n_t,k` treatment
+observations at look `k`. The Welch statistic `t_k` with Welch-Satterthwaite degrees of freedom
+`nu_k` is mapped to `z_k = Phi^{-1}(F_t(t_k; nu_k))`, which preserves its tail probability.
+Information fractions use the arm variances of all supplied observations and the planned maximum
+sizes:
+
+\[
+t_k = \frac{s_c^2/N_c + s_t^2/N_t}{s_c^2/n_{c,k} + s_t^2/n_{t,k}}.
+\]
+
+A look whose subsamples are both constant has no defined statistic and raises. Monitoring stops
+at the first crossing, and the result reports only the looks analyzed. Monitoring for harm uses
+`alternative="less"` (or `"greater"` for a lower-is-better metric). The procedure is a test; the
+mean difference at a crossing look is biased away from zero and is not reported as an estimate.
+
+References:
+
+- K. K. Gordon Lan and David L. DeMets, “Discrete sequential boundaries for clinical trials,”
+  *Biometrika* 70 (1983), 659–663, [doi:10.1093/biomet/70.3.659](https://doi.org/10.1093/biomet/70.3.659).
+- Christopher Jennison and Bruce W. Turnbull, *Group Sequential Methods with Applications to
+  Clinical Trials*, Chapman & Hall/CRC (2000), chapters 7 and 19.
+- P. Armitage, C. K. McPherson and B. C. Rowe, “Repeated significance tests on accumulating data,”
+  *Journal of the Royal Statistical Society, Series A* 132 (1969), 235–244,
+  [doi:10.2307/2343787](https://doi.org/10.2307/2343787).
 
 ## Serialization and numerical policy
 
